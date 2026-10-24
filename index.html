@@ -1,0 +1,479 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Match the Note</title><style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>Match the Note</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one phone-width column. Target note on top, live readout with gauge and pitch trace in the middle, record controls and mic diagnostics below. */
+:root {
+  --bg: #EDF0F3;
+  --surface: #FAFBFC;
+  --fg: #161B22;
+  --muted: #5B6672;
+  --line: #D5DBE2;
+  --accent: #C2255C;
+  --accent-fg: #FFFFFF;
+  --accent-soft: #F8DDE7;
+  --good: #1F8F4E;
+  --warn: #B7791F;
+  --bad: #C53B30;
+  --font-display: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1318; --surface: #181D24; --fg: #E9EDF2; --muted: #98A3AF; --line: #2A323B;
+    --accent: #FF7AA8; --accent-fg: #2B0716; --accent-soft: #3A1626;
+    --good: #4CC380; --warn: #E0A33A; --bad: #FF7A6E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1318; --surface: #181D24; --fg: #E9EDF2; --muted: #98A3AF; --line: #2A323B;
+  --accent: #FF7AA8; --accent-fg: #2B0716; --accent-soft: #3A1626;
+  --good: #4CC380; --warn: #E0A33A; --bad: #FF7A6E;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.app { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1, h2, p { margin: 0; }
+h1 { font-family: var(--font-display); font-weight: 800; font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; text-wrap: balance; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pill { font-family: var(--font-mono); font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); white-space: nowrap; margin-top: 2px; }
+.pill[data-state="on"] { color: var(--good); border-color: var(--good); }
+.pill[data-state="blocked"] { color: var(--bad); border-color: var(--bad); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.target-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.target-note { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+#tNote { font-family: var(--font-display); font-weight: 800; font-size: 64px; line-height: 1; letter-spacing: -0.03em; }
+#tHz { font-size: 13px; color: var(--muted); }
+.icon-btn { width: 56px; height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 28px; font-family: var(--font-display); cursor: pointer; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { flex: 1 1 0; min-height: 44px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 15px var(--font-body); cursor: pointer; padding: 0 14px; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); min-height: 32px; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+.btn { min-height: 52px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 16px var(--font-body); cursor: pointer; padding: 0 18px; width: 100%; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.secondary { background: var(--surface); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn[data-recording="true"] { border-color: var(--bad); color: var(--bad); }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.readout { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.big { font-family: var(--font-display); font-weight: 800; font-size: 56px; line-height: 1; letter-spacing: -0.03em; min-width: 2ch; }
+.right { text-align: right; min-width: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+#sungHz { font-size: 13px; color: var(--muted); }
+.verdict { font-weight: 600; font-size: 17px; line-height: 1.25; text-wrap: balance; }
+.verdict[data-level="on"] { color: var(--good); }
+.verdict[data-level="close"] { color: var(--warn); }
+.verdict[data-level="off"] { color: var(--bad); }
+.verdict[data-level="none"] { color: var(--muted); font-weight: 400; font-size: 14px; }
+
+.gauge { position: relative; height: 48px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.gauge .zone { position: absolute; top: 0; bottom: 0; left: 30%; width: 40%; background: var(--accent-soft); border-left: 1px dashed var(--accent); border-right: 1px dashed var(--accent); }
+.gauge .mid { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: var(--muted); opacity: 0.5; }
+#needle { position: absolute; top: 6px; bottom: 6px; left: 50%; width: 8px; margin-left: -4px; border-radius: 4px; background: var(--fg); opacity: 0.25; }
+#needle[data-live="true"] { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { #needle { transition: left 80ms linear, opacity 120ms; } }
+.gauge-labels { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-top: -6px; }
+canvas#trace { width: 100%; height: 150px; display: block; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+
+.msg { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--bad); color: var(--fg); background: var(--surface); font-size: 14px; }
+.takes { display: flex; flex-direction: column; gap: 10px; }
+.take { display: flex; flex-direction: column; gap: 6px; }
+.take audio { width: 100%; }
+.note { font-size: 13px; color: var(--muted); }
+
+details.card > summary { cursor: pointer; font-weight: 600; list-style-position: inside; min-height: 28px; }
+.diag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.diag-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
+.diag-list .k { min-width: 0; }
+.diag-list .v { font-family: var(--font-mono); font-size: 12px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.v[data-ok="true"] { color: var(--good); }
+.v[data-ok="false"] { color: var(--bad); }
+.v[data-ok="null"] { color: var(--muted); }
+.safety { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+
+<main class="app">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Voice training · test build</p>
+      <h1>Match the Note</h1>
+    </div>
+    <span id="pill" class="pill" data-state="off">Mic off</span>
+  </header>
+
+  <section class="card" aria-labelledby="tHead">
+    <h2 id="tHead" class="label">Target note</h2>
+    <div class="target-row">
+      <button id="down" class="icon-btn" aria-label="Lower the target one semitone">−</button>
+      <div class="target-note">
+        <span id="tNote">C4</span>
+        <span id="tHz" class="mono">261.6 Hz</span>
+      </div>
+      <button id="up" class="icon-btn" aria-label="Raise the target one semitone">+</button>
+    </div>
+    <div class="row">
+      <button id="low" class="chip" aria-pressed="false">Lower voice</button>
+      <button id="high" class="chip" aria-pressed="true">Higher voice</button>
+    </div>
+    <button id="play" class="btn secondary">Play note</button>
+    <label class="check" for="anyOct"><input type="checkbox" id="anyOct" checked> Any octave counts</label>
+    <p class="note">Wear headphones while the note plays, or the speaker will leak into the mic.</p>
+  </section>
+
+  <section class="card" aria-labelledby="lHead">
+    <h2 id="lHead" class="label">Live</h2>
+    <div class="readout">
+      <div>
+        <p class="label">You are singing</p>
+        <p id="sungNote" class="big" aria-live="off">—</p>
+      </div>
+      <div class="right">
+        <p id="sungHz" class="mono">— Hz</p>
+        <p id="verdict" class="verdict" data-level="none" aria-live="polite">Tap Start listening, then sing “ah”.</p>
+      </div>
+    </div>
+    <div class="gauge" role="img" aria-label="Pitch gauge. Centre is the target note.">
+      <div class="zone"></div><div class="mid"></div><div id="needle" data-live="false"></div>
+    </div>
+    <div class="gauge-labels"><span>◀ Flat</span><span>On the note</span><span>Sharp ▶</span></div>
+    <canvas id="trace" aria-label="Your pitch over the last six seconds against the target"></canvas>
+  </section>
+
+  <section class="controls">
+    <button id="listen" class="btn primary">Start listening</button>
+    <button id="rec" class="btn" disabled>Record a take</button>
+  </section>
+  <p id="micMsg" class="msg" role="alert" hidden></p>
+
+  <section id="takes" class="takes" hidden aria-label="Recorded takes"></section>
+
+  <details class="card" id="diagBox" open>
+    <summary>Microphone check</summary>
+    <ul id="diag" class="diag-list"></ul>
+  </details>
+
+  <p class="safety">Keep sessions short. If your throat hurts or your voice goes hoarse, stop and rest.</p>
+</main>
+
+<script>
+(function () {
+  var NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  var midiToFreq = function (m) { return 440 * Math.pow(2, (m - 69) / 12); };
+  var freqToMidi = function (f) { return 69 + 12 * Math.log2(f / 440); };
+  var noteName = function (m) { return NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); };
+  var $ = function (id) { return document.getElementById(id); };
+
+  var target = 60;
+  var anyOctave = true;
+  var ctx = null, stream = null, analyser = null, srcNode = null, buf = null;
+  var listening = false, raf = 0, lastTs = 0;
+  var recent = [], miss = 0, history = [];
+  var recorder = null, recStart = 0, takes = [];
+  var tone = null;
+  var permState = 'Not asked yet', permOk = null;
+  var WINDOW_MS = 6000;
+
+  /* ---------- target ---------- */
+  function renderTarget() {
+    target = Math.max(40, Math.min(79, target));
+    $('tNote').textContent = noteName(target);
+    $('tHz').textContent = midiToFreq(target).toFixed(1) + ' Hz';
+    $('low').setAttribute('aria-pressed', String(target === 48));
+    $('high').setAttribute('aria-pressed', String(target === 60));
+  }
+  $('down').addEventListener('click', function () { target -= 1; renderTarget(); });
+  $('up').addEventListener('click', function () { target += 1; renderTarget(); });
+  $('low').addEventListener('click', function () { target = 48; renderTarget(); });
+  $('high').addEventListener('click', function () { target = 60; renderTarget(); });
+  $('anyOct').addEventListener('change', function (e) { anyOctave = e.target.checked; });
+
+  /* ---------- audio context ---------- */
+  function ensureCtx() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!ctx) ctx = new AC();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  /* ---------- reference tone ---------- */
+  function stopTone() {
+    if (!tone) return;
+    try { tone.gain.gain.cancelScheduledValues(ctx.currentTime); tone.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.04); tone.osc.stop(ctx.currentTime + 0.25); tone.osc2.stop(ctx.currentTime + 0.25); } catch (e) {}
+    clearTimeout(tone.timer);
+    tone = null;
+    $('play').textContent = 'Play note';
+  }
+  $('play').addEventListener('click', function () {
+    if (tone) { stopTone(); return; }
+    var c = ensureCtx();
+    if (!c) { showMsg('This view cannot play sound.'); return; }
+    var f = midiToFreq(target);
+    var gain = c.createGain();
+    var osc = c.createOscillator(), osc2 = c.createOscillator();
+    osc.type = 'triangle'; osc.frequency.value = f;
+    osc2.type = 'sine'; osc2.frequency.value = f * 2; /* extra harmonic: phone speakers are weak below ~200 Hz */
+    var g2 = c.createGain(); g2.gain.value = 0.35;
+    osc.connect(gain); osc2.connect(g2); g2.connect(gain); gain.connect(c.destination);
+    var t = c.currentTime;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.35, t + 0.05);
+    osc.start(); osc2.start();
+    tone = { osc: osc, osc2: osc2, gain: gain, timer: setTimeout(stopTone, 3000) };
+    $('play').textContent = 'Stop note';
+  });
+
+  /* ---------- pitch detection (YIN) ---------- */
+  function yin(b, sr) {
+    var W = 1024, s = 0, i;
+    for (i = 0; i < b.length; i++) s += b[i] * b[i];
+    var rms = Math.sqrt(s / b.length);
+    if (rms < 0.012) return null;
+    var tauMax = Math.min(Math.floor(sr / 70), b.length - W - 2);
+    var tauMin = Math.floor(sr / 1100);
+    var d = new Float32Array(tauMax + 2), cm = new Float32Array(tauMax + 2), tau, run = 0;
+    for (tau = 1; tau <= tauMax; tau++) {
+      var sum = 0;
+      for (i = 0; i < W; i++) { var x = b[i] - b[i + tau]; sum += x * x; }
+      d[tau] = sum;
+    }
+    cm[0] = 1;
+    for (tau = 1; tau <= tauMax; tau++) { run += d[tau]; cm[tau] = run ? d[tau] * tau / run : 1; }
+    var found = -1;
+    for (tau = tauMin; tau < tauMax; tau++) {
+      if (cm[tau] < 0.15) {
+        while (tau + 1 < tauMax && cm[tau + 1] < cm[tau]) tau++;
+        found = tau; break;
+      }
+    }
+    if (found < 0) return null;
+    var a = cm[found - 1], bb = cm[found], c = cm[found + 1];
+    var den = 2 * (a - 2 * bb + c);
+    var shift = den ? (a - c) / den : 0;
+    if (!isFinite(shift) || Math.abs(shift) > 1) shift = 0;
+    return sr / (found + shift);
+  }
+
+  function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; }
+
+  /* ---------- listening loop ---------- */
+  function frame(ts) {
+    if (!listening) return;
+    raf = requestAnimationFrame(frame);
+    if (ts - lastTs < 33) return;
+    lastTs = ts;
+    analyser.getFloatTimeDomainData(buf);
+    var f = yin(buf, ctx.sampleRate);
+    var now = performance.now();
+    var diff = null, midi = null;
+    if (f && f > 70 && f < 1100) {
+      recent.push(freqToMidi(f)); if (recent.length > 5) recent.shift();
+      miss = 0;
+      midi = median(recent);
+      diff = midi - target;
+      if (anyOctave) diff = ((diff + 6) % 12 + 12) % 12 - 6;
+      showReading(midi, f, diff);
+    } else {
+      miss++;
+      if (miss > 6) { recent = []; showSilence(); }
+    }
+    history.push({ t: now, d: diff });
+    while (history.length && now - history[0].t > WINDOW_MS) history.shift();
+    drawTrace(now);
+  }
+
+  function showReading(midi, f, diff) {
+    var cents = diff * 100;
+    $('sungNote').textContent = noteName(Math.round(midi));
+    $('sungHz').textContent = f.toFixed(1) + ' Hz · ' + (cents > 0 ? '+' : '') + Math.round(cents) + ' cents';
+    var pos = 50 + Math.max(-50, Math.min(50, cents));
+    var n = $('needle'); n.style.left = pos + '%'; n.setAttribute('data-live', 'true');
+    var v = $('verdict'), abs = Math.abs(cents);
+    if (abs <= 20) { v.textContent = 'On the note'; v.setAttribute('data-level', 'on'); }
+    else if (abs <= 50) { v.textContent = cents > 0 ? 'Close. Come down a little' : 'Close. Go up a little'; v.setAttribute('data-level', 'close'); }
+    else { v.textContent = cents > 0 ? 'Too high. Come down' : 'Too low. Go up'; v.setAttribute('data-level', 'off'); }
+  }
+  function showSilence() {
+    $('sungNote').textContent = '—';
+    $('sungHz').textContent = '— Hz';
+    $('needle').setAttribute('data-live', 'false');
+    var v = $('verdict'); v.textContent = 'Sing a steady “ah”.'; v.setAttribute('data-level', 'none');
+  }
+
+  /* ---------- pitch trace ---------- */
+  var canvas = $('trace'), g = canvas.getContext('2d');
+  function sizeCanvas() {
+    var r = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w) return;
+    canvas.width = Math.round(w * r); canvas.height = Math.round(h * r);
+    g.setTransform(r, 0, 0, r, 0, 0);
+  }
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function drawTrace(now) {
+    var w = canvas.clientWidth, h = canvas.clientHeight, RANGE = 4;
+    if (!w) return;
+    g.clearRect(0, 0, w, h);
+    var yOf = function (d) { return h / 2 - (Math.max(-RANGE, Math.min(RANGE, d)) / RANGE) * (h / 2 - 8); };
+    g.fillStyle = css('--accent-soft');
+    g.fillRect(0, yOf(0.2), w, yOf(-0.2) - yOf(0.2));
+    g.strokeStyle = css('--line'); g.lineWidth = 1;
+    for (var s = -RANGE; s <= RANGE; s++) { g.beginPath(); g.moveTo(0, yOf(s)); g.lineTo(w, yOf(s)); g.stroke(); }
+    g.strokeStyle = css('--accent'); g.setLineDash([5, 4]);
+    g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke(); g.setLineDash([]);
+    g.fillStyle = css('--muted'); g.font = '11px ' + css('--font-mono');
+    g.fillText(noteName(target) + ' target', 8, yOf(0) - 6);
+    g.strokeStyle = css('--fg'); g.lineWidth = 3; g.lineJoin = 'round'; g.lineCap = 'round';
+    var prev = null;
+    g.beginPath();
+    for (var i = 0; i < history.length; i++) {
+      var p = history[i];
+      if (p.d === null) { prev = null; continue; }
+      var x = w - ((now - p.t) / WINDOW_MS) * w, y = yOf(p.d);
+      if (prev === null || Math.abs(p.d - prev) > 3) g.moveTo(x, y); else g.lineTo(x, y);
+      prev = p.d;
+    }
+    g.stroke();
+  }
+  window.addEventListener('resize', function () { sizeCanvas(); drawTrace(performance.now()); });
+
+  /* ---------- microphone ---------- */
+  function setPill(state, text) { var p = $('pill'); p.setAttribute('data-state', state); p.textContent = text; }
+  function showMsg(t) { var m = $('micMsg'); m.textContent = t; m.hidden = !t; }
+
+  function explain(e) {
+    var n = e && e.name ? e.name : 'Error';
+    if (n === 'NotAllowedError' || n === 'SecurityError') return n + ': the microphone was refused. Either Don’t Allow was tapped, or this view does not permit microphone access. Open this page in Safari from an https address and allow the microphone.';
+    if (n === 'NotFoundError') return n + ': no microphone was found on this device.';
+    if (n === 'NotReadableError') return n + ': another app is using the microphone. Close it and try again.';
+    return n + ': the microphone could not start' + (e && e.message ? ' (' + e.message + ')' : '') + '.';
+  }
+
+  async function startListening() {
+    showMsg('');
+    var c = ensureCtx();
+    if (!c) { showMsg('Web Audio is not available in this view.'); permState = 'Web Audio missing'; permOk = false; renderDiag(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      permState = 'No microphone API in this view'; permOk = false; renderDiag(); setPill('blocked', 'Mic blocked');
+      showMsg('This view does not offer microphone access at all. Open this page in Safari from an https address.');
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    } catch (e) {
+      permState = 'Blocked (' + (e && e.name ? e.name : 'error') + ')'; permOk = false; renderDiag();
+      setPill('blocked', 'Mic blocked'); showMsg(explain(e));
+      return;
+    }
+    permState = 'Granted'; permOk = true; renderDiag();
+    srcNode = c.createMediaStreamSource(stream);
+    analyser = c.createAnalyser(); analyser.fftSize = 2048;
+    srcNode.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    listening = true; recent = []; miss = 0; history = [];
+    sizeCanvas();
+    $('listen').textContent = 'Stop listening';
+    $('rec').disabled = typeof MediaRecorder === 'undefined';
+    setPill('on', 'Listening');
+    showSilence();
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stopListening() {
+    listening = false; cancelAnimationFrame(raf);
+    if (recorder && recorder.state === 'recording') recorder.stop();
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    if (srcNode) try { srcNode.disconnect(); } catch (e) {}
+    stream = null; srcNode = null; analyser = null;
+    $('listen').textContent = 'Start listening';
+    $('rec').disabled = true;
+    setPill('off', 'Mic off');
+    showSilence();
+  }
+  $('listen').addEventListener('click', function () { if (listening) stopListening(); else startListening(); });
+
+  /* ---------- recording ---------- */
+  function setRecUi(on) {
+    var b = $('rec');
+    b.textContent = on ? 'Stop recording' : 'Record a take';
+    b.setAttribute('data-recording', String(on));
+  }
+  function fmt(ms) { var s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  function addTake(blob, ms) {
+    takes.unshift({ url: URL.createObjectURL(blob), ms: ms });
+    if (takes.length > 6) { var old = takes.pop(); URL.revokeObjectURL(old.url); }
+    var box = $('takes'); box.hidden = false; box.textContent = '';
+    var total = takes.length;
+    takes.forEach(function (t, idx) {
+      var wrap = document.createElement('div'); wrap.className = 'take';
+      var lab = document.createElement('p'); lab.className = 'label';
+      lab.textContent = 'Take ' + (total - idx) + ' · ' + fmt(t.ms);
+      var au = document.createElement('audio'); au.controls = true; au.src = t.url; au.preload = 'metadata';
+      wrap.appendChild(lab); wrap.appendChild(au); box.appendChild(wrap);
+    });
+    var n = document.createElement('p'); n.className = 'note';
+    n.textContent = 'Takes stay in this page only until you close it.';
+    box.appendChild(n);
+  }
+  $('rec').addEventListener('click', function () {
+    if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+    if (!listening || !stream) return;
+    var chunks = [];
+    try { recorder = new MediaRecorder(stream); }
+    catch (e) { showMsg('Recording is not supported in this view (' + (e && e.name ? e.name : 'error') + ').'); return; }
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = function () {
+      var type = (recorder && recorder.mimeType) || 'audio/mp4';
+      addTake(new Blob(chunks, { type: type }), performance.now() - recStart);
+      setRecUi(false);
+    };
+    recStart = performance.now(); recorder.start(); setRecUi(true);
+  });
+
+  /* ---------- diagnostics ---------- */
+  function renderDiag() {
+    var embedded = false; try { embedded = window.self !== window.top; } catch (e) { embedded = true; }
+    var rows = [
+      ['Secure page (https)', window.isSecureContext ? 'Yes' : 'No', !!window.isSecureContext],
+      ['Microphone API', (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? 'Available' : 'Missing', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)],
+      ['Web Audio', (window.AudioContext || window.webkitAudioContext) ? 'Available' : 'Missing', !!(window.AudioContext || window.webkitAudioContext)],
+      ['Recording', typeof MediaRecorder !== 'undefined' ? 'Available' : 'Missing', typeof MediaRecorder !== 'undefined'],
+      ['Shown inside another page', embedded ? 'Yes' : 'No', null],
+      ['Microphone permission', permState, permOk]
+    ];
+    var ul = $('diag'); ul.textContent = '';
+    rows.forEach(function (r) {
+      var li = document.createElement('li');
+      var k = document.createElement('span'); k.className = 'k'; k.textContent = r[0];
+      var v = document.createElement('span'); v.className = 'v'; v.textContent = r[1]; v.setAttribute('data-ok', String(r[2]));
+      li.appendChild(k); li.appendChild(v); ul.appendChild(li);
+    });
+  }
+
+  renderTarget(); renderDiag(); sizeCanvas(); drawTrace(performance.now());
+})();
+</script>
+
+</body></html>
